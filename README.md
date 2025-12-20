@@ -1,0 +1,2 @@
+# tuicharselect
+TUI Character Map
