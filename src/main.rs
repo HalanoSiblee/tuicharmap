@@ -47,6 +47,16 @@ impl App {
             self.cursor_pos = self.search_results[self.search_index];
         }
     }
+    fn prev_match(&mut self) {
+        if !self.search_results.is_empty() {
+            if self.search_index == 0 {
+                self.search_index = self.search_results.len() - 1;
+            } else {
+                self.search_index -= 1;
+            }
+            self.cursor_pos = self.search_results[self.search_index];
+        }
+    }
 }
 
 fn main() -> Result<(), io::Error> {
@@ -94,7 +104,8 @@ fn main() -> Result<(), io::Error> {
     terminal.show_cursor()?;
 
     if let Ok(Some(final_char)) = res {
-        print!("{}", final_char);
+        //print!("{}", final_char);
+        println!("{}", final_char);
         io::Write::flush(&mut io::stdout())?;
     }
     Ok(())
@@ -118,6 +129,7 @@ fn run_loop<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result
                     KeyCode::Esc => return Ok(None),
                     KeyCode::Enter => return Ok(std::char::from_u32(app.cursor_pos)),
                     KeyCode::Tab => app.next_match(),
+                    KeyCode::BackTab => app.prev_match(),
                     
                     KeyCode::Left => app.cursor_pos = app.cursor_pos.saturating_sub(1),
                     KeyCode::Right => app.cursor_pos = app.cursor_pos.saturating_add(1),
@@ -167,7 +179,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let search = Paragraph::new(Line::from(vec![
         Span::raw(&app.search_query),
         Span::styled(result_count, Style::default().fg(Color::DarkGray))
-    ])).block(Block::bordered().title(" Search (TAB: Next, Enter: Select) "));
+    ])).block(Block::bordered().title(" Search (TAB: Next, Enter: Select, Backtab: Previous, PageUp/Down) "));
     f.render_widget(search, chunks[0]);
 
     let area = chunks[1].inner(Margin { vertical: 1, horizontal: 1 });
