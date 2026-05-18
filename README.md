@@ -16,6 +16,8 @@ TUI Character Map
 |---|---|
 |F1-F12|section jump|
 |TAB|search next|
+|Shift+TAB|previous search|
+|PageUp/Down|Page scrolling|
 |Escape|exit|
 |Enter|print char&exit|
 
