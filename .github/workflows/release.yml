@@ -19,7 +19,7 @@ jobs:
           - os: ubuntu-latest
             artifact_name: tuicharmap-ubuntu-x86_64
           - os: macos-latest
-            artifact_name: tuicharmap-macos-x86_64
+            artifact_name: tuicharmap-macos-arm64
 
     steps:
       - name: Checkout code
