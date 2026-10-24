@@ -15,13 +15,8 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: tuicharmap-linux-x86_64
-            asset_name: tuicharmap-linux-x86_64
           - os: macos-latest
             artifact_name: tuicharmap-macos-x86_64
-            asset_name: tuicharmap-macos-x86_64
-          - os: windows-latest
-            artifact_name: tuicharmap-windows-x86_64.exe
-            asset_name: tuicharmap-windows-x86_64.exe
 
     steps:
       - name: Checkout code
@@ -40,43 +35,19 @@ jobs:
         run: |
           brew update
           brew install pkg-config ncurses icu4c
-          # Homebrew doesn't link ncurses/icu into the default path. We must explicitly add them.
+          # Force pkg-config to use Homebrew's modern ncurses and icu4c
+          # (Handles both Apple Silicon /opt/homebrew and Intel /usr/local)
           echo "PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig:/usr/local/opt/icu4c/lib/pkgconfig:/opt/homebrew/opt/ncurses/lib/pkgconfig:/usr/local/opt/ncurses/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
           echo "CPPFLAGS=-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include -I/opt/homebrew/opt/ncurses/include -I/usr/local/opt/ncurses/include" >> "$GITHUB_ENV"
           echo "LDFLAGS=-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib -L/opt/homebrew/opt/ncurses/lib -L/usr/local/opt/ncurses/lib" >> "$GITHUB_ENV"
 
-      # --- WINDOWS SETUP ---
-      - name: Setup MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-ncurses
-            mingw-w64-x86_64-icu
-
-      # --- BUILD STEPS ---
-      - name: Build (Linux/macOS)
-        if: runner.os != 'Windows'
+      # --- BUILD ---
+      - name: Build
         run: make release
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          # Rename the binary to include .exe
-          make release
-          mv tuicharmap tuicharmap.exe
-
-      # --- PACKAGING ---
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            ${{ matrix.asset_name }}
+          path: tuicharmap
           if-no-files-found: error

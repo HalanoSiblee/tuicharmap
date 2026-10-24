@@ -12,6 +12,12 @@
 #include <thread>
 #include <vector>
 #include <wchar.h>
+#ifndef BUTTON5_PRESSED
+#define BUTTON5_PRESSED 0
+#endif
+#ifndef BUTTON5_CLICKED
+#define BUTTON5_CLICKED 0
+#endif
 namespace {
     enum class Tab {
         Charmap, Faces, Stylizer
