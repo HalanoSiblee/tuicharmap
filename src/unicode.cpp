@@ -5,13 +5,17 @@
 #include <cctype>
 #include <cstring>
 #include <cwchar>
-#include <fcntl.h>
 #include <mutex>
+#include <unordered_map>
+#include <vector>
+#include <fstream> // For Windows fallback
+
+#ifndef _WIN32
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <unordered_map>
-#include <vector>
+#endif
 
 namespace uc {
 
@@ -20,11 +24,11 @@ namespace {
 constexpr size_t MAX_CP = 0x110000;
 constexpr size_t MAX_NAME_BYTES = 16 * 1024 * 1024;
 constexpr const char* CACHE_PATH = "/tmp/tuicharmap.cache";
-constexpr uint32_t CACHE_VERSION = 2; // Increment to invalidate old caches
+constexpr uint32_t CACHE_VERSION = 3; // Bumped version for cross-platform sync
 
 struct CacheHeader {
-    uint32_t magic;    // 0x54554943 = 'TUIC'
-    uint32_t version;  
+    uint32_t magic;
+    uint32_t version;
     uint32_t count;
     uint32_t name_bytes;
     uint32_t reserved[4];
@@ -35,6 +39,9 @@ uint32_t*    m_index = nullptr;
 uint8_t*     m_widths = nullptr;
 uint32_t*    m_offsets = nullptr;
 char*        m_names = nullptr;
+
+// Windows memory buffer for cache
+std::vector<uint8_t> win_buf;
 
 std::vector<uint32_t>    f_index;
 std::vector<uint8_t>     f_widths;
@@ -56,9 +63,10 @@ std::string upper_copy(const char* p, size_t n) {
 }
 
 void build_or_load() {
-    int fd = open(CACHE_PATH, O_RDWR | O_CREAT, 0600);
     bool mapped = false;
 
+#ifndef _WIN32
+    int fd = open(CACHE_PATH, O_RDWR | O_CREAT, 0600);
     if (fd >= 0) {
         size_t total_size = sizeof(CacheHeader) + MAX_CP * 9 + MAX_NAME_BYTES;
         struct stat st;
@@ -84,19 +92,51 @@ void build_or_load() {
         }
         close(fd);
     }
+#else
+    // Windows: read cache into memory if valid
+    std::ifstream ifs(CACHE_PATH, std::ios::binary);
+    if (ifs) {
+        CacheHeader local_hdr;
+        ifs.read((char*)&local_hdr, sizeof(local_hdr));
+        if (local_hdr.magic == 0x54554943 && local_hdr.version == CACHE_VERSION) {
+            ifs.seekg(0, std::ios::beg);
+            win_buf.resize(sizeof(CacheHeader) + MAX_CP * 9 + local_hdr.name_bytes);
+            ifs.read((char*)win_buf.data(), win_buf.size());
+            
+            hdr = (CacheHeader*)win_buf.data();
+            m_index = (uint32_t*)((char*)win_buf.data() + sizeof(CacheHeader));
+            m_widths = (uint8_t*)(m_index + MAX_CP);
+            m_offsets = (uint32_t*)(m_widths + MAX_CP);
+            m_names = (char*)(m_offsets + MAX_CP);
+            
+            g_count.store(hdr->count, std::memory_order_release);
+            g_done.store(true, std::memory_order_release);
+            return;
+        }
+    }
+    // Prepare buffer for building
+    win_buf.resize(sizeof(CacheHeader) + MAX_CP * 9 + MAX_NAME_BYTES);
+    hdr = (CacheHeader*)win_buf.data();
+    m_index = (uint32_t*)((char*)win_buf.data() + sizeof(CacheHeader));
+    m_widths = (uint8_t*)(m_index + MAX_CP);
+    m_offsets = (uint32_t*)(m_widths + MAX_CP);
+    m_names = (char*)(m_offsets + MAX_CP);
+#endif
 
     if (!mapped) {
-        f_index.resize(MAX_CP);
-        f_widths.resize(MAX_CP);
-        f_offsets.resize(MAX_CP);
-        f_names.reserve(MAX_NAME_BYTES);
-        f_strings.resize(MAX_CP);
-        
-        m_index = f_index.data();
-        m_widths = f_widths.data();
-        m_offsets = f_offsets.data();
-    } else {
-        hdr->magic = 0;
+        if (!hdr) { // Fallback to heap vectors if mmap completely failed
+            f_index.resize(MAX_CP);
+            f_widths.resize(MAX_CP);
+            f_offsets.resize(MAX_CP);
+            f_names.reserve(MAX_NAME_BYTES);
+            f_strings.resize(MAX_CP);
+            
+            m_index = f_index.data();
+            m_widths = f_widths.data();
+            m_offsets = f_offsets.data();
+        } else {
+            hdr->magic = 0;
+        }
     }
 
     size_t name_bytes = 0;
@@ -126,7 +166,7 @@ void build_or_load() {
         m_widths[total_count] = (uint8_t)w;
         m_offsets[total_count] = (uint32_t)name_bytes;
         
-        if (mapped) {
+        if (hdr) {
             std::memcpy(m_names + name_bytes, uname.c_str(), uname.size() + 1);
         } else {
             f_names.append(uname.c_str(), uname.size() + 1);
@@ -136,7 +176,6 @@ void build_or_load() {
         name_bytes += uname.size() + 1;
         total_count++;
 
-        // Batch the release store every 1000 items to avoid cache-line thrashing
         if (total_count % 1000 == 0) {
             g_count.store(total_count, std::memory_order_release);
         }
@@ -144,12 +183,20 @@ void build_or_load() {
 
     g_count.store(total_count, std::memory_order_release);
 
-    if (mapped && hdr) {
+    if (hdr) {
         hdr->count = total_count;
         hdr->name_bytes = (uint32_t)name_bytes;
         hdr->version = CACHE_VERSION;
         hdr->magic = 0x54554943;
+
+#ifndef _WIN32
         msync(hdr, sizeof(CacheHeader), MS_SYNC);
+#else
+        std::ofstream ofs(CACHE_PATH, std::ios::binary);
+        if (ofs) {
+            ofs.write((char*)win_buf.data(), sizeof(CacheHeader) + MAX_CP * 9 + name_bytes);
+        }
+#endif
     }
     g_done.store(true, std::memory_order_release);
 }
@@ -190,7 +237,7 @@ uint8_t width_at(size_t i) {
 
 std::string_view upper_name(size_t i) {
     if (i >= count()) return {};
-    if (hdr) {
+    if (hdr || m_names) {
         return std::string_view(m_names + m_offsets[i]);
     } else {
         return std::string_view(f_strings[i]);

@@ -8,8 +8,13 @@ ifeq ($(PROFILE),debug)
   BIN      := tuicharmap-debug
 else
   CXXFLAGS := -std=c++17 -Wall -Wextra -pthread -O3 -DNDEBUG -flto
-  LDFLAGS  := -pthread -flto -s
   BIN      := tuicharmap
+  # Apple Clang doesn't like the '-s' flag in LDFLAGS
+  ifeq ($(shell uname -s),Darwin)
+    LDFLAGS := -pthread -flto
+  else
+    LDFLAGS := -pthread -flto -s
+  endif
 endif
 
 # Dependencies via pkg-config
@@ -49,4 +54,4 @@ $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
 clean:
-	rm -rf build tuicharmap tuicharmap-debug
+	rm -rf build tuicharmap tuicharmap-debug tuicharmap.exe

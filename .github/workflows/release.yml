@@ -1,56 +1,56 @@
-name: Release
+name: Build and Release
 
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
-    name: ${{ matrix.name }}
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            name: linux-x86_64
+            artifact_name: tuicharmap-linux-x86_64
+            asset_name: tuicharmap-linux-x86_64
           - os: macos-latest
-            name: macos-x86_64
+            artifact_name: tuicharmap-macos-x86_64
+            asset_name: tuicharmap-macos-x86_64
           - os: windows-latest
-            name: windows-x86_64
+            artifact_name: tuicharmap-windows-x86_64.exe
+            asset_name: tuicharmap-windows-x86_64.exe
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu)
+      # --- LINUX SETUP ---
+      - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libncursesw5-dev libicu-dev
+          sudo apt-get install -y build-essential pkg-config libncursesw5-dev libicu-dev
 
+      # --- MACOS SETUP ---
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        shell: bash
         run: |
           brew update
           brew install pkg-config ncurses icu4c
-          echo "PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig:/usr/local/opt/icu4c/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-          echo "CPPFLAGS=-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include" >> "$GITHUB_ENV"
-          echo "LDFLAGS=-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib" >> "$GITHUB_ENV"
+          # Homebrew doesn't link ncurses/icu into the default path. We must explicitly add them.
+          echo "PKG_CONFIG_PATH=/opt/homebrew/opt/icu4c/lib/pkgconfig:/usr/local/opt/icu4c/lib/pkgconfig:/opt/homebrew/opt/ncurses/lib/pkgconfig:/usr/local/opt/ncurses/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "CPPFLAGS=-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include -I/opt/homebrew/opt/ncurses/include -I/usr/local/opt/ncurses/include" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib -L/opt/homebrew/opt/ncurses/lib -L/usr/local/opt/ncurses/lib" >> "$GITHUB_ENV"
 
-      - name: Install dependencies (Windows)
+      # --- WINDOWS SETUP ---
+      - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: mingw64
+          msystem: MINGW64
           update: true
           install: >-
             mingw-w64-x86_64-gcc
@@ -59,51 +59,24 @@ jobs:
             mingw-w64-x86_64-ncurses
             mingw-w64-x86_64-icu
 
-      - name: Build release (Unix)
+      # --- BUILD STEPS ---
+      - name: Build (Linux/macOS)
         if: runner.os != 'Windows'
-        shell: bash
         run: make release
 
-      - name: Build release (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: make release
-
-      - name: Package artifact (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p release
-          cp tuicharmap "release/tuicharmap-${{ matrix.name }}"
-          ls -l release
-
-      - name: Package artifact (Windows)
+      - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          mkdir -p release
-          cp tuicharmap.exe "release/tuicharmap-${{ matrix.name }}.exe"
-          ls -l release
+          # Rename the binary to include .exe
+          make release
+          mv tuicharmap tuicharmap.exe
 
-      - name: Upload artifact
+      # --- PACKAGING ---
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tuicharmap-${{ matrix.name }}
-          path: release/*
-
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-assets/**/*
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.asset_name }}
+          if-no-files-found: error
