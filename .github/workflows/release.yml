@@ -17,7 +17,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: tuicharmap-linux-x86_64
+            artifact_name: tuicharmap-ubuntu-x86_64
           - os: macos-latest
             artifact_name: tuicharmap-macos-x86_64
 
@@ -46,10 +46,9 @@ jobs:
       - name: Rename Binary
         run: mv tuicharmap ${{ matrix.artifact_name }}
 
-      # Corrected step for attaching files to the release
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact_name }}
-          fail_on_unmatched_files: true   # <-- Use this instead of if-no-files-found
+          fail_on_unmatched_files: true
