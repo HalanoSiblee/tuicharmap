@@ -2,6 +2,11 @@
 
 A terminal character map for browsing Unicode, emoticons, and styled text.
 
+![Character map](./media/0e466833-6a14-4eae-a756-a657546dd473)
+![Faces](./media/37404d7c-1015-44a4-9833-d4c8043e42d2)
+![Stylizer](./media/89a82c28-ab83-4fbb-8504-b55866b4c911)
+![Character search](./media/773e40ee-5906-43d5-98de-fadb7e08a9b7)
+
 ## Build
 
 Requirements: C++17 compiler, GNU Make, `pkg-config`, ncursesw, and ICU (`icu-uc`).
@@ -29,8 +34,6 @@ sudo apt install build-essential pkg-config libncursesw5-dev libicu-dev
 <details>
 <summary>Project details</summary>
 
-- C++17 terminal UI using ncursesw and ICU.
-- Character map supports Unicode-name and codepoint search; Faces provides emoticons; Stylizer previews formatted text.
-- Built with GNU Make. Run `make clean` to remove build artifacts.
+This C++17 terminal UI uses ncursesw and ICU. The Character Map supports Unicode-name and codepoint search; Faces provides emoticons; Stylizer previews formatted text. Run `make clean` to remove build artifacts.
 
 </details>
